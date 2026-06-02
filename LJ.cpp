@@ -810,6 +810,11 @@ int main(int argc, char *argv[])
     {
       calculatorPtr = new ljCalculator();
     }
+    // else if (arg == "native")
+    // {
+    //   energySurface = NATIVE;
+    //   calculatorPtr = new nativeCalculator();
+    // }
   }
   else
   {
@@ -1168,408 +1173,234 @@ void updateGraphics(void)
     cout << "Error: " << gluErrorString(err) << endl;
 }
 
-void startUMAWorker(aseCalculator* calculator,
-                    std::vector<Atom*>* spheres)
-{
-    std::thread([calculator, spheres]()
-    {
-        while (!stopUMA.load())
-        {
-            auto result =
-                calculator->getFandU(*spheres);
-
-            {
-                std::lock_guard<std::mutex> lock(umaMutex);
-
-                latestUMA = std::move(result);
-
-                umaReady.store(true);
-            }
-
-            // UMA update frequency
-            std::this_thread::sleep_for(
-                std::chrono::milliseconds(100));
-        }
-
-    }).detach();
-}
-
 cVector3d stepSimulation(const cVector3d &requestedPosition,
                          const double timeInterval,
                          const bool button1,
                          const bool button2,
                          const bool hasHapticDevice)
 {
-    using Clock = std::chrono::high_resolution_clock;
-
-    auto frameStart = Clock::now();
-
-    std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-
-    if (spheres.empty())
-    {
-        return cVector3d(0.0, 0.0, 0.0);
-    }
-
-    static std::vector<cVector3d> previousPositions;
-
-    if (previousPositions.size() != spheres.size())
-    {
-        previousPositions.resize(spheres.size());
-
-        for (int i = 0; i < spheres.size(); i++)
-        {
-            previousPositions[i] = spheres[i]->getLocalPos();
-        }
-    }
-
-    const double K_HAPTIC = 600.0;
-    const double MAX_HAPTIC_FORCE = 3000.0;
-
-    Atom *current = spheres[simulatedCurrentAtom];
-
-    cVector3d position =
-        hasHapticDevice ? requestedPosition
-                        : current->getLocalPos();
-
-    // CAMERA SWITCHING
-
-    if (button2)
-    {
-        if (!simulatedButton2Changed)
-        {
-            switch (curr_camera)
-            {
-            case 1:
-                camera->setSphericalPolarRad(0);
-                camera->setSphericalAzimuthRad(0);
-                break;
-
-            case 2:
-                camera->setSphericalPolarRad(0);
-                camera->setSphericalAzimuthRad(M_PI);
-                break;
-
-            case 3:
-                camera->setSphericalPolarRad(M_PI);
-                camera->setSphericalAzimuthRad(M_PI);
-                break;
-
-            case 4:
-                curr_camera = 0;
-                camera->setSphericalPolarRad(M_PI);
-                camera->setSphericalAzimuthRad(0);
-                break;
-            }
-
-            curr_camera++;
-
-            simulatedButton2Changed = true;
-        }
-    }
-    else
-    {
-        simulatedButton2Changed = false;
-    }
-
-    // CURRENT ATOM SWITCHING
-
-    if (button1)
-    {
-        if (!simulatedButton1Changed)
-        {
-            int previous_curr_atom = simulatedCurrentAtom;
-
-            simulatedCurrentAtom =
-                remainder(simulatedCurrentAtom + 1,
-                          spheres.size());
-
-            if (simulatedCurrentAtom < 0)
-            {
-                simulatedCurrentAtom += spheres.size();
-            }
-
-            int startAtom = simulatedCurrentAtom;
-
-            while (spheres[simulatedCurrentAtom]->isAnchor())
-            {
-                simulatedCurrentAtom =
-                    remainder(simulatedCurrentAtom + 1,
-                              spheres.size());
-
-                if (simulatedCurrentAtom < 0)
-                {
-                    simulatedCurrentAtom += spheres.size();
-                }
-
-                if (simulatedCurrentAtom == startAtom)
-                {
-                    break;
-                }
-            }
-
-            current = spheres[simulatedCurrentAtom];
-
-            Atom *previous = spheres[previous_curr_atom];
-
-            cVector3d A = current->getLocalPos();
-
-            previous->setCurrent(false);
-            previous->setLocalPos(A);
-
-            current->setCurrent(true);
-            current->setLocalPos(position);
-
-            simulatedButton1Changed = true;
-        }
-    }
-    else
-    {
-        simulatedButton1Changed = false;
-    }
-
-    // PHYSICS
-
-    if (!freezeAtoms.load())
-    {
-        // GET LATEST UMA RESULT (NON-BLOCKING)
-
-        std::vector<std::vector<double>> forcesVec;
-
-        if (umaReady.load())
-        {
-            std::lock_guard<std::mutex> umaLock(umaMutex);
-
-            forcesVec = latestUMA;
-        }
-        else
-        {
-            // startup fallback
-
-            forcesVec.assign(
-                spheres.size() + 1,
-                std::vector<double>(3, 0.0));
-        }
-
-        double potentialEnergy = 0.0;
-
-        if (forcesVec.size() > spheres.size())
-        {
-            potentialEnergy = forcesVec[spheres.size()][0];
-        }
-
-        const double F_MAX = 5000.0;
-        const double CONTACT_RADIUS = 0.25;
-
-        auto collisionStart = Clock::now();
-
-        // APPLY UMA FORCES
-
-        for (int i = 0; i < spheres.size(); i++)
-        {
-            Atom *atom = spheres[i];
-
-            cVector3d force(0, 0, 0);
-
-            if (i < forcesVec.size())
-            {
-                force = cVector3d(
-                    forcesVec[i][0],
-                    forcesVec[i][1],
-                    forcesVec[i][2]);
-            }
-
-            if (!isFiniteVector(force))
-            {
-                force.zero();
-            }
-
-            double fmag = force.length();
-
-            if (fmag > F_MAX)
-            {
-                force *= (F_MAX / fmag);
-            }
-
-            atom->setForce(force);
-        }
-
-        // COLLISION FORCES
-
-        for (int i = 0; i < spheres.size(); i++)
-        {
-            Atom *atom_i = spheres[i];
-
-            cVector3d force_i = atom_i->getForce();
-
-            cVector3d xi = atom_i->getLocalPos();
-
-            for (int j = i + 1; j < spheres.size(); j++)
-            {
-                Atom *atom_j = spheres[j];
-
-                cVector3d xj = atom_j->getLocalPos();
-
-                cVector3d r = xi - xj;
-
-                double dist = r.length();
-
-                if (dist < CONTACT_RADIUS && dist > 1e-6)
-                {
-                    cVector3d dir = r / dist;
-
-                    double penetration =
-                        CONTACT_RADIUS - dist;
-
-                    cVector3d correction =
-                        dir * (5000.0 * penetration);
-
-                    force_i += correction;
-
-                    atom_j->setForce(
-                        atom_j->getForce() - correction);
-                }
-            }
-
-            atom_i->setForce(force_i);
-        }
-
-        auto collisionEnd = Clock::now();
-
-        double collision_ms =
-            std::chrono::duration<double, std::milli>(
-                collisionEnd - collisionStart)
-                .count();
-
-        // VERLET INTEGRATION
-
-        for (int i = 0; i < spheres.size(); i++)
-        {
-            Atom *atom = spheres[i];
-
-            cVector3d x_old = previousPositions[i];
-
-            cVector3d x_curr = atom->getLocalPos();
-
-            cVector3d force = atom->getForce();
-
-            cVector3d acc =
-                force /
-                (atom->getMass() *
-                 SPHERE_MASS_SCALE_FACTOR);
-
-            if (!isFiniteVector(acc))
-            {
-                acc.zero();
-            }
-
-            cVector3d x_new =
-                x_curr +
-                (x_curr - x_old) +
-                acc * timeInterval * timeInterval;
-
-            previousPositions[i] = x_curr;
-
-            applyDavidBoundaryConditions(
-                x_curr,
-                x_curr);
-
-            applySeanBoundaryConditions(
-                x_curr,
-                x_curr,
-                x_curr,
-                northPlanePos,
-                northPlaneNorm,
-                southPlanePos,
-                southPlaneNorm,
-                eastPlanePos,
-                eastPlaneNorm,
-                westPlanePos,
-                westPlaneNorm,
-                forwardPlanePos,
-                forwardPlaneNorm,
-                backPlanePos,
-                backPlaneNorm,
-                BOUNDARY_LIMIT);
-
-            if (!atom->isCurrent() &&
-                !atom->isAnchor())
-            {
-                atom->setLocalPos(x_new);
-            }
-
-            cVector3d v =
-                (x_new - x_old) / timeInterval;
-
-            atom->setVelocity(v);
-        }
-
-        displayedPotentialEnergy.store(
-            potentialEnergy);
-
-        // TIMING DEBUG
-
-        static int timingCounter = 0;
-
-        timingCounter++;
-
-        if (timingCounter % 100 == 0)
-        {
-            auto frameEnd = Clock::now();
-
-            double total_ms =
-                std::chrono::duration<double, std::milli>(
-                    frameEnd - frameStart)
-                    .count();
-
-            std::cout
-                << "Collision: "
-                << collision_ms
-                << " ms | Total: "
-                << total_ms
-                << " ms"
-                << std::endl;
-        }
-    }
-
-    // HAPTIC FORCE
-
-    current = spheres[simulatedCurrentAtom];
-
-    if (hasHapticDevice)
-    {
-        cVector3d x = current->getLocalPos();
-
-        cVector3d diff = position - x;
-
-        double dist = diff.length();
-
-        cVector3d hapticForce(0, 0, 0);
-
-        if (dist > 1e-6)
-        {
-            hapticForce = K_HAPTIC * diff;
-
-            hapticForce =
-                clampVectorMagnitude(
-                    hapticForce,
-                    MAX_HAPTIC_FORCE);
-        }
-
-        current->setForce(
-            current->getForce() + hapticForce);
-
-        current->setLocalPos(position);
-    }
-
-    cVector3d force = current->getForce();
+  std::lock_guard<std::recursive_mutex> lock(sceneMutex);
+
+  if (spheres.empty())
+  {
+    return cVector3d(0.0, 0.0, 0.0);
+  }
+
+  static std::vector<cVector3d> previousForces;
+  static std::vector<cVector3d> previousPositions;
+
+  if (previousForces.size() != spheres.size())
+  {
+    previousForces.resize(spheres.size(), cVector3d(0.0, 0.0, 0.0));
+    previousPositions.resize(spheres.size());
 
     for (int i = 0; i < spheres.size(); i++)
     {
-        spheres[i]->updateVelVector();
+      previousPositions[i] = spheres[i]->getLocalPos();
+    }
+  }
+
+  const double K_HAPTIC = 200.0;
+  const double MAX_HAPTIC_FORCE = 1000.0;
+
+  Atom *current = spheres[simulatedCurrentAtom];
+  cVector3d position = hasHapticDevice ? requestedPosition : current->getLocalPos();
+
+  if (button2)
+  {
+    if (!simulatedButton2Changed)
+    {
+      switch (curr_camera)
+      {
+      case 1:
+        camera->setSphericalPolarRad(0);
+        camera->setSphericalAzimuthRad(0);
+        break;
+      case 2:
+        camera->setSphericalPolarRad(0);
+        camera->setSphericalAzimuthRad(M_PI);
+        break;
+      case 3:
+        camera->setSphericalPolarRad(M_PI);
+        camera->setSphericalAzimuthRad(M_PI);
+        break;
+      case 4:
+        curr_camera = 0;
+        camera->setSphericalPolarRad(M_PI);
+        camera->setSphericalAzimuthRad(0);
+        break;
+      }
+      curr_camera++;
+      simulatedButton2Changed = true;
+    }
+  }
+  else
+  {
+    simulatedButton2Changed = false;
+  }
+
+  if (button1)
+  {
+    if (!simulatedButton1Changed)
+    {
+      int previous_curr_atom = simulatedCurrentAtom;
+
+      simulatedCurrentAtom = remainder(simulatedCurrentAtom + 1, spheres.size());
+      if (simulatedCurrentAtom < 0)
+        simulatedCurrentAtom += spheres.size();
+
+      int startAtom = simulatedCurrentAtom;
+      while (spheres[simulatedCurrentAtom]->isAnchor())
+      {
+        simulatedCurrentAtom = remainder(simulatedCurrentAtom + 1, spheres.size());
+        if (simulatedCurrentAtom < 0)
+          simulatedCurrentAtom += spheres.size();
+
+        if (simulatedCurrentAtom == startAtom)
+          break;
+      }
+
+      current = spheres[simulatedCurrentAtom];
+      Atom *previous = spheres[previous_curr_atom];
+
+      cVector3d A = current->getLocalPos();
+
+      previous->setCurrent(false);
+      previous->setLocalPos(A);
+      current->setCurrent(true);
+      current->setLocalPos(position);
+
+      simulatedButton1Changed = true;
+    }
+  }
+  else
+  {
+    simulatedButton1Changed = false;
+  }
+
+  if (!freezeAtoms.load())
+  {
+    vector<vector<double>> forcesVec = calculatorPtr->getFandU(spheres);
+    double potentialEnergy = forcesVec[spheres.size()][0];
+
+    // const double F_MAX = 2000.0;
+    const double CONTACT_RADIUS = 0.25;
+
+    for (int i = 0; i < spheres.size(); i++)
+    {
+      Atom *atom = spheres[i];
+
+      cVector3d force(
+          forcesVec[i][0],
+          forcesVec[i][1],
+          forcesVec[i][2]);
+
+      if (!isFiniteVector(force))
+        force.zero();
+
+      double fmag = force.length();
+      // if (fmag > F_MAX)
+      // {
+      //   force *= (F_MAX / fmag);
+      // }
+
+      cVector3d xi = atom->getLocalPos();
+
+      for (int j = 0; j < spheres.size(); j++)
+      {
+        if (i == j)
+          continue;
+
+        cVector3d r = xi - spheres[j]->getLocalPos();
+        double dist = r.length();
+
+        if (dist < CONTACT_RADIUS && dist > 1e-6)
+        {
+          cVector3d dir = r / dist;
+          double penetration = CONTACT_RADIUS - dist;
+
+          force += dir * (5000.0 * penetration);
+        }
+      }
+
+      atom->setForce(force);
     }
 
-    return force;
+    for (int i = 0; i < spheres.size(); i++)
+    {
+      Atom *atom = spheres[i];
+
+      cVector3d x_old = previousPositions[i];
+      cVector3d x_curr = atom->getLocalPos();
+
+      cVector3d force = atom->getForce();
+
+      cVector3d acc =
+          force / (atom->getMass() * SPHERE_MASS_SCALE_FACTOR);
+
+      if (!isFiniteVector(acc))
+        acc.zero();
+
+      cVector3d x_new =
+          x_curr + (x_curr - x_old) + acc * timeInterval * timeInterval;
+
+      previousPositions[i] = x_curr;
+
+      applyDavidBoundaryConditions(x_curr, x_curr);
+
+      applySeanBoundaryConditions(
+          x_curr, x_curr, x_curr,
+          northPlanePos, northPlaneNorm,
+          southPlanePos, southPlaneNorm,
+          eastPlanePos, eastPlaneNorm,
+          westPlanePos, westPlaneNorm,
+          forwardPlanePos, forwardPlaneNorm,
+          backPlanePos, backPlaneNorm,
+          BOUNDARY_LIMIT);
+
+      if (!atom->isCurrent() && !atom->isAnchor())
+      {
+        atom->setLocalPos(x_new);
+      }
+
+      cVector3d v = (x_new - x_old) / timeInterval;
+      atom->setVelocity(v);
+    }
+
+    displayedPotentialEnergy.store(potentialEnergy);
+  }
+
+  current = spheres[simulatedCurrentAtom];
+
+  if (hasHapticDevice)
+  {
+    cVector3d x = current->getLocalPos();
+
+    cVector3d diff = position - x;
+    double dist = diff.length();
+
+    cVector3d hapticForce(0, 0, 0);
+
+    if (dist > 1e-6)
+    {
+      double k = K_HAPTIC;
+
+      hapticForce = k * diff;
+      hapticForce = clampVectorMagnitude(hapticForce, MAX_HAPTIC_FORCE);
+    }
+
+    current->setForce(current->getForce() + hapticForce);
+    current->setLocalPos(position);
+  }
+
+  cVector3d force = current->getForce();
+
+  for (int i = 0; i < spheres.size(); i++)
+  {
+    spheres[i]->updateVelVector();
+  }
+
+  return force;
 }
 
 void updateHaptics(void)
