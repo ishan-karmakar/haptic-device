@@ -56,6 +56,14 @@
 #include <string>
 #include <atomic>
 #include <vector>
+#include <thread>
+#include <mutex>
+#include <atomic>
+
+std::mutex umaMutex;
+std::vector<std::vector<double>> latestUMA;
+std::atomic<bool> umaReady(false);
+std::atomic<bool> stopUMA(false);
 //------------------------------------------------------------------------------
 using namespace chai3d;
 using namespace std;

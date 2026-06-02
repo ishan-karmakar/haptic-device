@@ -1,20 +1,100 @@
-# Keep `make` working from this folder by delegating to a local CMake build.
+################################################################################
+#
+#  Software License Agreement (BSD License)
+#  Copyright (c) 2003-2024, CHAI3D
+#  (www.chai3d.org)
+#
+#  All rights reserved.
+#
+#  Redistribution and use in source and binary forms, with or without
+#  modification, are permitted provided that the following conditions
+#  are met:
+#
+#  * Redistributions of source code must retain the above copyright
+#  notice, this list of conditions and the following disclaimer.
+#
+#  * Redistributions in binary form must reproduce the above
+#  copyright notice, this list of conditions and the following
+#  disclaimer in the documentation and/or other materials provided
+#  with the distribution.
+#
+#  * Neither the name of CHAI3D nor the names of its contributors may
+#  be used to endorse or promote products derived from this software
+#  without specific prior written permission.
+#
+#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+#  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+#  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+#  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+#  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+#  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+#  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+#  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+#  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+#  POSSIBILITY OF SUCH DAMAGE.
+#
+################################################################################
 
-CMAKE ?= cmake
-BUILD_DIR ?= build
-BUILD_TYPE ?= Release
-JOBS ?= $(shell nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+# DO NOT MODIFY THIS FILE
+# Project-specific changes should go in Makefile.project(.*).
 
-.PHONY: all configure clean rebuild
+# Default target
+all: project
 
-all: configure
-	$(CMAKE) --build $(BUILD_DIR) --parallel $(JOBS)
+# Common settings
+TOP_DIR = ../../..
+ifneq (,$(wildcard $(TOP_DIR)/Makefile.common))
+    include $(TOP_DIR)/Makefile.common
+endif
 
-configure:
-	$(CMAKE) -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+# Directories
+SRC_DIR = .
+OBJ_DIR = ./obj/$(CFG)/$(OS)-$(ARCH)-$(COMPILER)
+
+# Files
+SOURCES  = $(wildcard $(SRC_DIR)/*.cpp)
+INCLUDES = $(wildcard $(SRC_DIR)/*.h)
+OBJECTS  = $(patsubst %.cpp, $(OBJ_DIR)/%.o, $(notdir $(SOURCES)))
+NAME     = $(notdir $(shell pwd)) 
+TARGET   = $(BIN_DIR)/$(NAME)
+
+# Import project settings.
+ifneq (,$(wildcard ./Makefile.project))
+    include ./Makefile.project
+endif
+
+# Import platform-specific project settings.
+ifneq (,$(wildcard ./Makefile.project.$(OS)))
+    include ./Makefile.project.$(OS)
+endif
+
+# Build rules
+
+project: $(TARGET)
+
+$(OBJECTS): $(INCLUDES) $(LIB_INCLUDES) | $(OBJ_DIR)
+
+$(TARGET): $(LIB_STATIC) $(OBJECTS) | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) $(OBJECTS) $(LDFLAGS) $(LDLIBS) -o $(TARGET)
+
+$(OBJ_DIR):
+	mkdir -p $@
+
+$(OBJ_DIR)/%.o : $(SRC_DIR)/%.cpp
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+.PHONY: project
 
 clean:
-	@if [ -d "$(BUILD_DIR)" ]; then $(CMAKE) --build $(BUILD_DIR) --target clean; fi
-	rm -rf $(BUILD_DIR)
+	rm -f $(TARGET) $(OBJECTS) *~ TAGS core *.bak #*#
+	-rmdir $(OBJ_DIR)
 
-rebuild: clean all
+PYTHON = /home/labuser/haptic-device-transfer/uma_env/bin/python
+
+CXXFLAGS += $(shell $(PYTHON) -c "import sysconfig; print('-I' + sysconfig.get_paths()['include'])")
+
+LDFLAGS += $(shell $(PYTHON) -c "import sysconfig; print('-L' + sysconfig.get_config_var('LIBDIR'))")
+
+LDLIBS += -lpython3.11
