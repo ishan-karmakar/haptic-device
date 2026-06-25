@@ -658,7 +658,7 @@ void placeAtoms(std::array<double, 9> aseCell, std::array<int, 3> asePbc, int ar
   // either no additional arguments were given or second argument was an integer
   if (argc == 2 || isNumber(argv[2])) {
     // set numSpheres to input; if none or negative, default is five
-    int numSpheres = argc > 1 ? atoi(argv[2]) : 5;
+    int numSpheres = argc > 2 ? atoi(argv[2]) : 5;
     for (int i = 0; i < numSpheres; i++) {
       // initialize atom with texture and atomic number of 1 (hydrogen)
       Atom *new_atom = initializeAtom(texture, 1); 
