@@ -37,6 +37,10 @@
 # python stuff
 __pycache__
 *.pyc
+uma_env/
+
+# POSCARs
+*.poscar
 
 # local build outputs
 build/

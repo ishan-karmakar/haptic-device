@@ -16,6 +16,7 @@ def _get_uma_predictor(model_name="uma-s-1p2", device="cuda"):
         _uma_predictor_cache[key] = pretrained_mlip.get_predict_unit(
             model_name,
             device=device,
+            inference_settings="turbo"
         )
 
     return _uma_predictor_cache[key]
