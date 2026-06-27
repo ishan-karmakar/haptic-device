@@ -63,8 +63,13 @@ extern int height;
 // reference frame location.
 extern cVector3d selectedAtomOffset;
 
+//for toggling debug menu
+extern bool showDebug;
+
 extern GLFWwindow *window;
 
+
+//toggling fullscreen
 extern bool fullscreen;
 
 extern int swapInterval;
@@ -78,6 +83,16 @@ extern cLabel *camera_pos;
 extern cLabel *helpHeader;
 
 extern cPanel *helpPanel;
+
+extern cLabel *debugForceLabel;
+
+extern cLabel *debugNearestNeighborLabel;
+
+extern cLabel *debugPositionLabel;
+
+extern cLabel *debugMaxForceLabel;
+
+extern vector<cLabel *> debugAtomLabels;
 
 extern std::atomic<int> screenshotCounter;
 
