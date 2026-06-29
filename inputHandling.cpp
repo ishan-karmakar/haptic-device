@@ -7,173 +7,167 @@
 
 int just_unanchored = 0;
 
-void keyCallback(GLFWwindow *a_window, int a_key, int a_scancode, int a_action,
-                 int a_mods) {
-  // filter calls that only include a key press
-  if ((a_action != GLFW_PRESS) && (a_action != GLFW_REPEAT)) {
-    return;
-  } else if ((a_key == GLFW_KEY_ESCAPE) || (a_key == GLFW_KEY_Q)) {
-    // option - exit
-    glfwSetWindowShouldClose(a_window, GLFW_TRUE);
-  } else if (a_key == GLFW_KEY_F) {  // option - toggle fullscreen
-    std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-    // toggle state variable
-    fullscreen = !fullscreen;
+void toggleFullscreen() {
+  std::lock_guard<std::recursive_mutex> lock(sceneMutex);
+  // toggle state variable
+  fullscreen = !fullscreen;
 
-    // get handle to monitor
-    GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+  // get handle to monitor
+  GLFWmonitor *monitor = glfwGetPrimaryMonitor();
 
-    // get information about monitor
-    const GLFWvidmode *mode = glfwGetVideoMode(monitor);
+  // get information about monitor
+  const GLFWvidmode *mode = glfwGetVideoMode(monitor);
 
-    // set fullscreen or window mode
-    if (fullscreen) {
-      glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height,
-                           mode->refreshRate);
-      glfwSwapInterval(swapInterval);
-    } else {
-      int w = 2. * mode->height;
-      int h = 1.5 * mode->height;
-      int x = 1.5 * (mode->width - w);
-      int y = 1.5 * (mode->height - h);
-      glfwSetWindowMonitor(window, NULL, x, y, w, h, mode->refreshRate);
-      glfwSwapInterval(swapInterval);
-    }
-  } else if (a_key == GLFW_KEY_U) {
-    std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-    // action - unanchor all key
-    for (auto i{0}; i < spheres.size(); i++) {
-      if (spheres[i]->isAnchor()) {
-        spheres[i]->setAnchor(false);
-      }
-    }
-    assert(just_unanchored = 5);
-    just_unanchored = 0;
-  } else if (a_key == GLFW_KEY_S) {
-    std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-    // option - save screenshot to file
-    cImagePtr image = cImage::create();
-    scope->setShowEnabled(false);
-    camera->renderView(width, height);
-    camera->copyImageBuffer(image);
-    scope->setShowEnabled(true);
-    int index = 0;
-    string filename_stem = "lj" + to_string(spheres.size()) + "_";
-    while (fileExists(filename_stem + to_string(index) + ".png")) {
-      index++;
-    }
-    image->saveToFile(filename_stem + to_string(index) + ".png");
-    screenshotCounter = 5000;
-  } else if (a_key == GLFW_KEY_SPACE) {  // freeze simulation
-    freezeAtoms = !freezeAtoms;
-  } else if (a_key == GLFW_KEY_C) {  // save atoms to con file
-    std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-    ofstream writeFile;
-    string dir1 = "./log/";
-    struct stat buffer;
-    if (stat(dir1.c_str(), &buffer) != 0) { // Check if log directory exists
-      char cstr[dir1.size() + 1];
-      strcpy(cstr, dir1.c_str());
-      mkdir(cstr, 0777);
-    }
+  // set fullscreen or window mode
+  if (fullscreen) {
+    glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height,
+                          mode->refreshRate);
+    glfwSwapInterval(swapInterval);
+  } else {
+    int w = 2. * mode->height;
+    int h = 1.5 * mode->height;
+    int x = 1.5 * (mode->width - w);
+    int y = 1.5 * (mode->height - h);
+    glfwSetWindowMonitor(window, NULL, x, y, w, h, mode->refreshRate);
+    glfwSwapInterval(swapInterval);
+  }
+}
 
-    // Find local date
-    time_t now = time(0);
-    tm *ltm = localtime(&now);
-    int year = 1900 + ltm -> tm_year;
-    int month = 1 + ltm -> tm_mon;
-    int day = ltm -> tm_mday;
-    string date = to_string(month) + "-" + to_string(day) + "-" + to_string(year);
-    string dir2 = dir1 + date + "/";
-    if (stat(dir2.c_str(), &buffer) != 0) { // Check if date directory exists
-      char cstr[dir2.size() + 1];
-      strcpy(cstr, dir2.c_str());
-      mkdir(cstr, 0777);
+void unanchorAtoms() {
+  std::lock_guard<std::recursive_mutex> lock(sceneMutex);
+  // action - unanchor all key
+  for (auto i{0}; i < spheres.size(); i++) {
+    if (spheres[i]->isAnchor()) {
+      spheres[i]->setAnchor(false);
     }
-    // Prevent overwriting .con files
-    int index = 0;
-    while (fileExists(dir2 + "atoms" + to_string(index) + ".con")) {
-      index++;
-    }
-    writeConCounter = 5000;
-    writeToCon(dir2 + "atoms" + to_string(index) + ".con");
-    cout << "LOGGED AT " + date + " atoms" + to_string(index) + ".con" << endl;
-  } else if (a_key == GLFW_KEY_A) {
-    std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-    // anchor all atoms while maintaining control
-    for (auto i{0}; i < spheres.size(); i++) {
-      if (!spheres[i]->isAnchor() && !(spheres[i]->isCurrent())) {
-        spheres[i]->setAnchor(true);
-      }
-    }
-  } else if (a_key == GLFW_KEY_UP || a_key == GLFW_KEY_DOWN) {
-        std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-        int direction = (a_key == GLFW_KEY_UP) ? 1 : -1;
-        camera->setSphericalPolarRad(camera->getSphericalPolarRad() +
-                                     (M_PI / 50) * direction);
-        // prevent overflow on camera position
-        if (camera->getSphericalPolarRad() > 1000 * M_PI) {
-            camera->setSphericalPolarRad(camera->getSphericalPolarRad() -
-                                         1000 * M_PI);
-        }
-        if (camera->getSphericalPolarRad() < -1000 * M_PI) {
-            camera->setSphericalPolarRad(camera->getSphericalPolarRad() +
-                                         1000 * M_PI);
-        }
-        updateCameraLabel(camera_pos, camera);
-    } else if (a_key == GLFW_KEY_RIGHT || a_key == GLFW_KEY_LEFT) {
-        std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-        int direction = (a_key == GLFW_KEY_RIGHT) ? 1 : -1;
-        camera->setSphericalAzimuthRad(camera->getSphericalAzimuthRad() +
-                                       (M_PI / 50) * direction);
-        // prevent overflow on camera position
-        if (camera->getSphericalAzimuthRad() > 1000 * M_PI) {
-            camera->setSphericalAzimuthRad(camera->getSphericalAzimuthRad() -
-                                           1000 * M_PI);
-        }
-        if (camera->getSphericalAzimuthRad() < -1000 * M_PI) {
-            camera->setSphericalAzimuthRad(camera->getSphericalAzimuthRad() +
-                                           1000 * M_PI);
-        }
-        updateCameraLabel(camera_pos, camera);
+  }
+  assert(just_unanchored = 5);
+  just_unanchored = 0;
+}
 
-  } else if (a_key == GLFW_KEY_LEFT_BRACKET ||
-             a_key == GLFW_KEY_RIGHT_BRACKET) {
-    std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-    int direction = (a_key == GLFW_KEY_RIGHT_BRACKET) ? 1 : -1;
-    if ((direction == 1 && rho < 1) || (direction == -1 && rho > .15)) {
-      camera->setSphericalRadius(camera->getSphericalRadius() +
-                                 .01 * direction);
-      rho = camera->getSphericalRadius();
-      updateCameraLabel(camera_pos, camera);
+void saveScreenshot() {
+  std::lock_guard<std::recursive_mutex> lock(sceneMutex);
+  // option - save screenshot to file
+  cImagePtr image = cImage::create();
+  scope->setShowEnabled(false);
+  camera->renderView(width, height);
+  camera->copyImageBuffer(image);
+  scope->setShowEnabled(true);
+  int index = 0;
+  string filename_stem = "lj" + to_string(spheres.size()) + "_";
+  while (fileExists(filename_stem + to_string(index) + ".png")) {
+    index++;
+  }
+  image->saveToFile(filename_stem + to_string(index) + ".png");
+  screenshotCounter = 5000;
+}
+
+void saveConFile() {
+  std::lock_guard<std::recursive_mutex> lock(sceneMutex);
+  ofstream writeFile;
+  string dir1 = "./log/";
+  struct stat buffer;
+  if (stat(dir1.c_str(), &buffer) != 0) { // Check if log directory exists
+    char cstr[dir1.size() + 1];
+    strcpy(cstr, dir1.c_str());
+    mkdir(cstr, 0777);
+  }
+
+  // Find local date
+  time_t now = time(0);
+  tm *ltm = localtime(&now);
+  int year = 1900 + ltm -> tm_year;
+  int month = 1 + ltm -> tm_mon;
+  int day = ltm -> tm_mday;
+  string date = to_string(month) + "-" + to_string(day) + "-" + to_string(year);
+  string dir2 = dir1 + date + "/";
+  if (stat(dir2.c_str(), &buffer) != 0) { // Check if date directory exists
+    char cstr[dir2.size() + 1];
+    strcpy(cstr, dir2.c_str());
+    mkdir(cstr, 0777);
+  }
+  // Prevent overwriting .con files
+  int index = 0;
+  while (fileExists(dir2 + "atoms" + to_string(index) + ".con")) {
+    index++;
+  }
+  writeConCounter = 5000;
+  writeToCon(dir2 + "atoms" + to_string(index) + ".con");
+  cout << "LOGGED AT " + date + " atoms" + to_string(index) + ".con" << endl;
+}
+
+void anchorAtoms() {
+  std::lock_guard<std::recursive_mutex> lock(sceneMutex);
+  // anchor all atoms while maintaining control
+  for (auto i{0}; i < spheres.size(); i++) {
+    if (!spheres[i]->isAnchor() && !(spheres[i]->isCurrent())) {
+      spheres[i]->setAnchor(true);
     }
-  } else if (a_key == GLFW_KEY_R) {
-      std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-      // Reset the camera to its default pos
-      camera->setSphericalPolarRad(0);
-      camera->setSphericalAzimuthRad(0);
-      camera->setSphericalRadius(.35);
-      rho = .35;
-      updateCameraLabel(camera_pos, camera);
-  } else if((a_key == GLFW_KEY_LEFT_CONTROL || a_key == GLFW_KEY_RIGHT_CONTROL) &&
-           a_action == GLFW_PRESS){
-    std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-    
-    helpPanel->setShowPanel(!helpPanel->getShowPanel());
-    helpHeader->setShowEnabled(helpPanel->getShowPanel());
-    for(int i = 0; i < hotkeyKeys.size(); i++){
-        hotkeyKeys[i]->setShowEnabled(helpPanel->getShowPanel());
-        hotkeyFunctions[i]->setShowEnabled(helpPanel->getShowPanel());
-    }
-  } else if (a_key == GLFW_KEY_D) {
-      std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-      showDebug = !showDebug;
-  } else if (a_key == GLFW_KEY_T) {
-    std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-    for (int i = 0; i < spheres.size(); i++) {
-        spheres[i]->setLocalPos(initialPositions[i]);
-        spheres[i]->setVelocity(0);
-    }
+  }
+}
+
+void moveCameraVertical(bool up) {
+  std::lock_guard<std::recursive_mutex> lock(sceneMutex);
+  int direction = up ? 1 : -1;
+  camera->setSphericalPolarRad(camera->getSphericalPolarRad() +
+                                (M_PI / 50) * direction);
+  // prevent overflow on camera position
+  if (camera->getSphericalPolarRad() > 1000 * M_PI) {
+      camera->setSphericalPolarRad(camera->getSphericalPolarRad() -
+                                    1000 * M_PI);
+  }
+  if (camera->getSphericalPolarRad() < -1000 * M_PI) {
+      camera->setSphericalPolarRad(camera->getSphericalPolarRad() +
+                                    1000 * M_PI);
+  }
+  updateCameraLabel(camera_pos, camera);
+}
+
+void moveCameraHorizontal(bool right) {
+  std::lock_guard<std::recursive_mutex> lock(sceneMutex);
+  int direction = right ? 1 : -1;
+  camera->setSphericalAzimuthRad(camera->getSphericalAzimuthRad() +
+                                  (M_PI / 50) * direction);
+  // prevent overflow on camera position
+  if (camera->getSphericalAzimuthRad() > 1000 * M_PI) {
+      camera->setSphericalAzimuthRad(camera->getSphericalAzimuthRad() -
+                                      1000 * M_PI);
+  }
+  if (camera->getSphericalAzimuthRad() < -1000 * M_PI) {
+      camera->setSphericalAzimuthRad(camera->getSphericalAzimuthRad() +
+                                      1000 * M_PI);
+  }
+  updateCameraLabel(camera_pos, camera);
+}
+
+void zoomCamera(bool zoomIn) {
+  std::lock_guard<std::recursive_mutex> lock(sceneMutex);
+  int direction = zoomIn ? 1 : -1;
+  if ((direction == 1 && rho < 1) || (direction == -1 && rho > .15)) {
+    camera->setSphericalRadius(camera->getSphericalRadius() +
+                                .01 * direction);
+    rho = camera->getSphericalRadius();
+    updateCameraLabel(camera_pos, camera);
+  }
+}
+
+void resetCamera() {
+  std::lock_guard<std::recursive_mutex> lock(sceneMutex);
+  // Reset the camera to its default pos
+  camera->setSphericalPolarRad(0);
+  camera->setSphericalAzimuthRad(0);
+  camera->setSphericalRadius(.35);
+  rho = .35;
+  updateCameraLabel(camera_pos, camera);
+}
+
+void toggleHelpPanel() {
+  std::lock_guard<std::recursive_mutex> lock(sceneMutex);
+  helpPanel->setShowPanel(!helpPanel->getShowPanel());
+  helpHeader->setShowEnabled(helpPanel->getShowPanel());
+  for(int i = 0; i < hotkeyKeys.size(); i++) {
+      hotkeyKeys[i]->setShowEnabled(helpPanel->getShowPanel());
+      hotkeyFunctions[i]->setShowEnabled(helpPanel->getShowPanel());
   }
 }
 
