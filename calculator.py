@@ -59,6 +59,7 @@ _uma_predictor_cache = {}
 # lazily on first use. "turbo" inference settings trade a little accuracy for
 # the speed the haptic loop needs.
 def _get_uma_predictor(model_name="uma-s-1p2", device="cuda"):
+    from fairchem.core import pretrained_mlip
     key = (model_name, device)
 
     if key not in _uma_predictor_cache:
@@ -66,6 +67,9 @@ def _get_uma_predictor(model_name="uma-s-1p2", device="cuda"):
             model_name,
             device=device,
             inference_settings="turbo"
+        )
+
+    return _uma_predictor_cache[key]
 
 # Resolves a short spec string to a constructed ASE calculator. Accepts built-in
 # aliases for common potentials (lj, morse, emt, uma) or a generic
@@ -104,8 +108,33 @@ def _resolve_calculator(spec):
     # UMA is Meta's universal ML potential. The optional ":task" suffix selects
     # the prediction head (omol, omat, oc20, ...); omol is the default.
     elif spec.startswith("uma"):
+        from fairchem.core import FAIRChemCalculator
+
+        # Examples:
+        # "uma"
+        # "uma:omol"
+        # "uma:omat"
+        # "uma:oc20"
+
+        parts = spec.split(":")
+
+        task_name = "oc20"
+
+        if len(parts) > 1:
+            task_name = parts[1]
+
+        predictor = _get_uma_predictor(
+            model_name="uma-s-1p2",
+            device="cuda"
+        )
+
+        return FAIRChemCalculator(
+            predictor,
+            task_name=task_name
+        )
+
+    elif spec == "uma-remote":
         return None
-        return FAIRChemCalculator()
 
     # Generic format: "module:ClassName" or "module:ClassName:{...kwargs...}".
     else:

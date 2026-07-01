@@ -338,7 +338,7 @@ namespace
             size_t firstColon = spec.find(':');
             if (firstColon == std::string::npos) {
                 std::cerr << "ASE calculator spec must be empty, a known alias "
-                            "(`lj`, `morse`, `emt`, `uma`), or `module:Class[:kwargs]`."
+                            "(`lj`, `morse`, `emt`, `uma`, `uma-remote`), or `module:Class[:kwargs]`."
                         << std::endl;
                 std::exit(1);
             }
@@ -376,7 +376,7 @@ namespace
         Py_DECREF(pathStr);
 
         // Load ASE and grab the Atoms class now so we don't repeat this on every frame.
-        aseModule = importModule("calculator");
+        aseModule = importModule(spec == "uma-remote" ? "calculator" : "ase");
         atomsClass = getCallable(aseModule, "Atoms");
 
         PyObject *calcArgs = PyTuple_New(0);
