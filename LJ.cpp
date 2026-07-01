@@ -339,7 +339,7 @@ void initializeHapticDevice();
 void initializeAtomLabels();
 void addDebugLabel(std::string text);
 
-void placeAtoms(std::array<double, 9> aseCell, std::array<int, 3> asePbc, int argc, char *argv[]);
+void placeAtoms(std::array<double, 9>& aseCell, std::array<int, 3>& asePbc, int argc, char *argv[]);
 Atom* initializeAtom(cTexture2dPtr texture, int atomicNumber);
 void initializeAtomPosition(Atom *new_atom);
 void initializeCalculator(int argc, char *argv[], std::array<double, 9> aseCell,
@@ -697,7 +697,8 @@ void initializeHapticDevice() {
   }
 }
 
-void placeAtomsAse(std::array<double, 9> aseCell, std::array<int, 3> asePbc, cTexture2dPtr texture, char *argv[]) {
+
+void placeAtomsAse(std::array<double, 9>& aseCell, std::array<int, 3>& asePbc, cTexture2dPtr texture, char *argv[]) {
   AseStructureData structure;
   try {
     structure = loadAseStructure(argv[2]);
@@ -707,6 +708,7 @@ void placeAtomsAse(std::array<double, 9> aseCell, std::array<int, 3> asePbc, cTe
   }
   const std::vector<std::array<double, 3>> &positions = structure.positions;
   const std::vector<int> &startingAtomicNrs = structure.atomicNumbers;
+  // comment out below for no pbc
   aseCell = structure.cell;
   asePbc = structure.pbc;
   const int nAtoms = static_cast<int>(positions.size());
@@ -733,7 +735,7 @@ void placeAtomsAse(std::array<double, 9> aseCell, std::array<int, 3> asePbc, cTe
   }
 }
 
-void placeAtoms(std::array<double, 9> aseCell, std::array<int, 3> asePbc, int argc, char *argv[]) {
+void placeAtoms(std::array<double, 9>& aseCell, std::array<int, 3>& asePbc, int argc, char *argv[]) {
   cTexture2dPtr texture = cTexture2d::create(); // create texture
   // load texture file
   bool fileload = loadChaiResource([&](const char *path)
@@ -986,6 +988,15 @@ void initializeprevPositions() {
   }
 }
 
+double getMean(vector<int> v) {
+  int sum = 0;
+  for (int i = 0; i < v.size(); i++) {
+    sum += v[i];
+  }
+  return sum / v.size();
+}
+
+vector<int> frequencies;
 void runGraphicsLoop() {
   framebufferSizeCallback(window, width, height); // initialize framebuffer size
   cPrecisionClock keyboardModeClock;
@@ -1007,8 +1018,13 @@ void runGraphicsLoop() {
     renderSliderWindow();
     glfwPollEvents(); // process events
     freqCounterGraphics.signal(1); // signal frequency counter
+    frequencies.push_back(freqCounterHaptics.getFrequency());
+    cout << getMean(frequencies) << endl;
+    // cout << freqCounterHaptics.getFrequency() << endl;
   }
 }
+
+
 
 void close(void) { // stop the simulation
   static bool closed = false;
@@ -1461,7 +1477,6 @@ cVector3d positionModeUpdate(Atom *current, cVector3d position, const double tim
   return cVector3d(0,0,0);
 }
 
-
 cVector3d stepSimulation(const cVector3d &requestedPosition, const double timeInterval,
                         const bool hasHapticDevice) {
   std::lock_guard<std::recursive_mutex> lock(sceneMutex);
@@ -1573,10 +1588,6 @@ void updateHaptics(void) {
     // atom if the button is touched Otherwise it flips out
     
     readButtons(buttons, buttonReset);
-
-    // delay to slow down machine
-    // std::cout << "Starting delay...\n";
-    // std::this_thread::sleep_for(std::chrono::seconds(2));
 
     // time step the simulation runs at in seconds - shorter timesteps are more accurate, but result in slower frames
     // .001 is good value for uma simulations
