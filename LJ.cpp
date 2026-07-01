@@ -119,9 +119,9 @@ const double WALL_FRONT = 0.05;   // 0.08;
 const double WALL_BACK = -0.05;   //-0.08;
 const double SPHERE_STIFFNESS = 500.0;
 const double SPHERE_MASS_SCALE_FACTOR = 0.02;
-const double F_DAMPING = 0.25; // 0.25
-const double V_DAMPING = 0.8;  // 0.1
-const double A_DAMPING = 0.99; // 0.5
+const double F_DAMPING = 0.25; // Force damping coefficient
+const double V_DAMPING = 0.8;  // Velocity damping coefficient
+const double A_DAMPING = 0.99; // Acceleration damping coefficient
 const double K_MAGNET = 500.0;
 const double HAPTIC_STIFFNESS = 1000.0;
 const double SIGMA = 1.0;
@@ -129,6 +129,14 @@ const double EPSILON = 1.0;
 const double KEYBOARD_SIM_DT_MAX = 0.002;
 const double MAX_ATOM_SPEED = 1.0;
 const double MAX_ATOM_STEP = 0.01;
+
+// Haptic spring-damper constants (to reduce oscillations)
+const double K_HAPTIC_SPRING = 100.0;
+const double K_HAPTIC_DAMPER = 5.0;    // Damping for force mode
+const double K_RETURN_SPRING = 25.0;
+const double K_RETURN_DAMPER = 2.0;    // Damping for standby return
+const double K_POSITION_ATTRACTION = 25.0;
+const double K_POSITION_DAMPER = 2.0;  // Damping for position mode
 
 // Scales the distance betweens atoms
 const double DIST_SCALE = .02;
@@ -739,7 +747,7 @@ void placeAtoms(std::array<double, 9> aseCell, std::array<int, 3> asePbc, int ar
   // either no additional arguments were given or second argument was an integer
   if (argc == 2 || isNumber(argv[2])) {
     // set numSpheres to input; if none or negative, default is five
-    int numSpheres = argc > 2 ? atoi(argv[2]) : 5;
+    int numSpheres = argc > 3 ? atoi(argv[2]) : 5;
     for (int i = 0; i < numSpheres; i++) {
       // initialize atom with texture and atomic number of 1 (hydrogen)
       Atom *new_atom = initializeAtom(texture, 1); 
@@ -1271,21 +1279,30 @@ cVector3d getNewAtomPosition(Atom *atom, cVector3d &prev_position, const double 
 
 cVector3d forceModeUpdate(Atom *current, cVector3d position, const double timeInterval) {
   // spring constant haptic device feels
-  const double K_HAPTIC = 100;
+  const double K_HAPTIC = K_HAPTIC_SPRING;
   // spring constant atom feels
-  const double K_CURRENT = 100;
+  const double K_CURRENT = K_HAPTIC_SPRING;
+  // damping coefficients
+  const double K_HAPTIC_DAMP = K_HAPTIC_DAMPER;
+  const double K_CURRENT_DAMP = K_HAPTIC_DAMPER;
 
   cVector3d positionErr = position - current->getLocalPos();
 
-  cVector3d hapticForce = positionErr * K_CURRENT;
+  // Calculate velocity for damping (using previous position)
+  cVector3d currentPrevPos = prevPositions[currentIndex];
+  cVector3d velocity = (current->getLocalPos() - currentPrevPos) / timeInterval;
+
+  // Spring force + damping force on atom
+  cVector3d hapticForce = positionErr * K_CURRENT - velocity * K_CURRENT_DAMP;
   current->setForce(current->getForce() + hapticForce);
 
-  cVector3d currentPrevPos = prevPositions[currentIndex];
-  cVector3d currentPos = current->getLocalPos();
   current->setLocalPos(getNewAtomPosition(current, currentPrevPos, timeInterval));
-  prevPositions[currentIndex] = currentPos;
+  prevPositions[currentIndex] = current->getLocalPos();
 
-  return (current->getLocalPos() - position) * K_HAPTIC;
+  // Spring force + damping force returned to haptic device
+  cVector3d forceErr = current->getLocalPos() - position;
+  cVector3d hapticVelocity = (current->getLocalPos() - currentPrevPos) / timeInterval;
+  return forceErr * K_HAPTIC - hapticVelocity * K_HAPTIC_DAMP;
 }
 
 bool prevHapticInitialized;
