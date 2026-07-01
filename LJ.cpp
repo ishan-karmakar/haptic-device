@@ -1323,7 +1323,7 @@ void recordForceHistory(Atom *current) {
 }
 
 std::optional<cVector3d> updateStandbyModeSimulating(Atom *current, cVector3d& position, double timeInterval) {
-  constexpr double HAPTIC_RADIUS = .08;
+  constexpr double HAPTIC_RADIUS = .02;
   constexpr double K_HAPTIC = 1; // spring constant for applying vector projection
 
   if (position.length() < HAPTIC_RADIUS) {
