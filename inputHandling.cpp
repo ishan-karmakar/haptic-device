@@ -20,16 +20,9 @@ static void scaleCursorToPixels(double &a_x, double &a_y) {
 
 void toggleFullscreen() {
   std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-  // toggle state variable
   fullscreen = !fullscreen;
-
-  // get handle to monitor
   GLFWmonitor *monitor = glfwGetPrimaryMonitor();
-
-  // get information about monitor
   const GLFWvidmode *mode = glfwGetVideoMode(monitor);
-
-  // set fullscreen or window mode
   if (fullscreen) {
     glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height,
                           mode->refreshRate);
@@ -46,7 +39,6 @@ void toggleFullscreen() {
 
 void unanchorAtoms() {
   std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-  // action - unanchor all key
   for (auto i{0}; i < spheres.size(); i++) {
     if (spheres[i]->isAnchor()) {
       spheres[i]->setAnchor(false);
@@ -58,7 +50,6 @@ void unanchorAtoms() {
 
 void saveScreenshot() {
   std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-  // option - save screenshot to file
   cImagePtr image = cImage::create();
   scope->setShowEnabled(false);
   camera->renderView(width, height);
@@ -78,26 +69,23 @@ void saveConFile() {
   ofstream writeFile;
   string dir1 = "./log/";
   struct stat buffer;
-  if (stat(dir1.c_str(), &buffer) != 0) { // Check if log directory exists
+  if (stat(dir1.c_str(), &buffer) != 0) {
     char cstr[dir1.size() + 1];
     strcpy(cstr, dir1.c_str());
     mkdir(cstr, 0777);
   }
-
-  // Find local date
   time_t now = time(0);
   tm *ltm = localtime(&now);
-  int year = 1900 + ltm -> tm_year;
-  int month = 1 + ltm -> tm_mon;
-  int day = ltm -> tm_mday;
+  int year = 1900 + ltm->tm_year;
+  int month = 1 + ltm->tm_mon;
+  int day = ltm->tm_mday;
   string date = to_string(month) + "-" + to_string(day) + "-" + to_string(year);
   string dir2 = dir1 + date + "/";
-  if (stat(dir2.c_str(), &buffer) != 0) { // Check if date directory exists
+  if (stat(dir2.c_str(), &buffer) != 0) {
     char cstr[dir2.size() + 1];
     strcpy(cstr, dir2.c_str());
     mkdir(cstr, 0777);
   }
-  // Prevent overwriting .con files
   int index = 0;
   while (fileExists(dir2 + "atoms" + to_string(index) + ".con")) {
     index++;
@@ -109,7 +97,6 @@ void saveConFile() {
 
 void anchorAtoms() {
   std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-  // anchor all atoms while maintaining control
   for (auto i{0}; i < spheres.size(); i++) {
     if (!spheres[i]->isAnchor() && !(spheres[i]->isCurrent())) {
       spheres[i]->setAnchor(true);
@@ -122,15 +109,10 @@ void moveCameraVertical(bool up) {
   int direction = up ? 1 : -1;
   camera->setSphericalPolarRad(camera->getSphericalPolarRad() +
                                 (M_PI / 50) * direction);
-  // prevent overflow on camera position
-  if (camera->getSphericalPolarRad() > 1000 * M_PI) {
-      camera->setSphericalPolarRad(camera->getSphericalPolarRad() -
-                                    1000 * M_PI);
-  }
-  if (camera->getSphericalPolarRad() < -1000 * M_PI) {
-      camera->setSphericalPolarRad(camera->getSphericalPolarRad() +
-                                    1000 * M_PI);
-  }
+  if (camera->getSphericalPolarRad() > 1000 * M_PI)
+    camera->setSphericalPolarRad(camera->getSphericalPolarRad() - 1000 * M_PI);
+  if (camera->getSphericalPolarRad() < -1000 * M_PI)
+    camera->setSphericalPolarRad(camera->getSphericalPolarRad() + 1000 * M_PI);
   updateCameraLabel(camera_pos, camera);
 }
 
@@ -139,15 +121,10 @@ void moveCameraHorizontal(bool right) {
   int direction = right ? 1 : -1;
   camera->setSphericalAzimuthRad(camera->getSphericalAzimuthRad() +
                                   (M_PI / 50) * direction);
-  // prevent overflow on camera position
-  if (camera->getSphericalAzimuthRad() > 1000 * M_PI) {
-      camera->setSphericalAzimuthRad(camera->getSphericalAzimuthRad() -
-                                      1000 * M_PI);
-  }
-  if (camera->getSphericalAzimuthRad() < -1000 * M_PI) {
-      camera->setSphericalAzimuthRad(camera->getSphericalAzimuthRad() +
-                                      1000 * M_PI);
-  }
+  if (camera->getSphericalAzimuthRad() > 1000 * M_PI)
+    camera->setSphericalAzimuthRad(camera->getSphericalAzimuthRad() - 1000 * M_PI);
+  if (camera->getSphericalAzimuthRad() < -1000 * M_PI)
+    camera->setSphericalAzimuthRad(camera->getSphericalAzimuthRad() + 1000 * M_PI);
   updateCameraLabel(camera_pos, camera);
 }
 
@@ -155,8 +132,7 @@ void zoomCamera(bool zoomIn) {
   std::lock_guard<std::recursive_mutex> lock(sceneMutex);
   int direction = zoomIn ? 1 : -1;
   if ((direction == 1 && rho < 1) || (direction == -1 && rho > .15)) {
-    camera->setSphericalRadius(camera->getSphericalRadius() +
-                                .01 * direction);
+    camera->setSphericalRadius(camera->getSphericalRadius() + .01 * direction);
     rho = camera->getSphericalRadius();
     updateCameraLabel(camera_pos, camera);
   }
@@ -164,7 +140,6 @@ void zoomCamera(bool zoomIn) {
 
 void resetCamera() {
   std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-  // Reset the camera to its default pos
   camera->setSphericalPolarRad(0);
   camera->setSphericalAzimuthRad(0);
   camera->setSphericalRadius(.35);
@@ -174,47 +149,53 @@ void resetCamera() {
 
 void toggleHelpPanel() {
   std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-    
   helpPanel->setShowPanel(!helpPanel->getShowPanel());
   helpHeader->setShowEnabled(helpPanel->getShowPanel());
-  for(int i = 0; i < hotkeyKeys.size(); i++){
-      hotkeyKeys[i]->setShowEnabled(helpPanel->getShowPanel());
-      hotkeyFunctions[i]->setShowEnabled(helpPanel->getShowPanel());
+  for (int i = 0; i < hotkeyKeys.size(); i++) {
+    hotkeyKeys[i]->setShowEnabled(helpPanel->getShowPanel());
+    hotkeyFunctions[i]->setShowEnabled(helpPanel->getShowPanel());
   }
 }
 
 void keyCallback(GLFWwindow *a_window, int a_key, int a_scancode, int a_action,
                  int a_mods) {
-  // filter calls that only include a key press
   if ((a_action != GLFW_PRESS) && (a_action != GLFW_REPEAT)) {
     return;
   } else if ((a_key == GLFW_KEY_ESCAPE) || (a_key == GLFW_KEY_Q)) {
-    // option - exit
     glfwSetWindowShouldClose(a_window, GLFW_TRUE);
-  } else if (a_key == GLFW_KEY_F)  // option - toggle fullscreen
+  } else if (a_key == GLFW_KEY_F) {
     toggleFullscreen();
-  else if (a_key == GLFW_KEY_U)
+  } else if (a_key == GLFW_KEY_U) {
     unanchorAtoms();
-  else if (a_key == GLFW_KEY_S)
+  } else if (a_key == GLFW_KEY_S) {
     saveScreenshot();
-  else if (a_key == GLFW_KEY_SPACE)  // freeze simulation
+  } else if (a_key == GLFW_KEY_SPACE) {
     freezeAtoms = !freezeAtoms;
-  else if (a_key == GLFW_KEY_C)  // save atoms to con file
+  } else if (a_key == GLFW_KEY_C) {
     saveConFile();
-  else if (a_key == GLFW_KEY_A)
+  } else if (a_key == GLFW_KEY_A) {
     anchorAtoms();
-  else if (a_key == GLFW_KEY_UP || a_key == GLFW_KEY_DOWN)
+  } else if (a_key == GLFW_KEY_UP || a_key == GLFW_KEY_DOWN) {
     moveCameraVertical(a_key == GLFW_KEY_UP);
-  else if (a_key == GLFW_KEY_RIGHT || a_key == GLFW_KEY_LEFT)
+  } else if (a_key == GLFW_KEY_RIGHT || a_key == GLFW_KEY_LEFT) {
     moveCameraHorizontal(a_key == GLFW_KEY_RIGHT);
-  else if (a_key == GLFW_KEY_LEFT_BRACKET ||
-             a_key == GLFW_KEY_RIGHT_BRACKET)
+  } else if (a_key == GLFW_KEY_LEFT_BRACKET || a_key == GLFW_KEY_RIGHT_BRACKET) {
     zoomCamera(a_key == GLFW_KEY_RIGHT_BRACKET);
-  else if (a_key == GLFW_KEY_R)
+  } else if (a_key == GLFW_KEY_R) {
     resetCamera();
-  else if((a_key == GLFW_KEY_LEFT_CONTROL || a_key == GLFW_KEY_RIGHT_CONTROL) &&
-           a_action == GLFW_PRESS)
+  } else if ((a_key == GLFW_KEY_LEFT_CONTROL || a_key == GLFW_KEY_RIGHT_CONTROL) &&
+             a_action == GLFW_PRESS) {
     toggleHelpPanel();
+  } else if (a_key == GLFW_KEY_D) {
+    std::lock_guard<std::recursive_mutex> lock(sceneMutex);
+    showDebug = !showDebug;
+  } else if (a_key == GLFW_KEY_T) {
+    std::lock_guard<std::recursive_mutex> lock(sceneMutex);
+    for (int i = 0; i < spheres.size(); i++) {
+      spheres[i]->setLocalPos(initialPositions[i]);
+      spheres[i]->setVelocity(0);
+    }
+  }
 }
 
 void mouseMotionCallback(GLFWwindow *a_window, double a_posX, double a_posY) {
