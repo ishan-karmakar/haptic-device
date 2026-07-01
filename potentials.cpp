@@ -328,9 +328,13 @@ namespace
             className = "EMT";
             kwargsText.clear();
         } else if (spec.rfind("uma", 0) == 0) {
+<<<<<<< HEAD
             // UMA is Meta's universal ML potential. Its constructor takes the full
             // spec string directly, so we pass it through as kwargs.
             moduleName = "uma_wrapper";
+=======
+            moduleName = "calculator";
+>>>>>>> b43a4ac (feat: Remove unnecessary uma_wrapper)
             className = "create_calculator";
             kwargsText = spec;
         } else {
@@ -382,9 +386,9 @@ namespace
         PyObject *calcArgs = PyTuple_New(0);
         PyObject *calcKwargs = nullptr;
 
-        if (moduleName == "uma_wrapper" && className == "create_calculator") {
+        if (moduleName == "calculator" && className == "create_calculator") {
             // UMA's factory function handles its own construction from the spec string.
-            PyObject *wrapperModule = importModule("uma_wrapper");
+            PyObject *wrapperModule = importModule("calculator");
             PyObject *resolver = getCallable(wrapperModule, "create_calculator");
 
             PyObject *specObj = PyUnicode_FromString(kwargsText.c_str());

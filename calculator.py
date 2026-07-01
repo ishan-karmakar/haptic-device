@@ -75,7 +75,7 @@ def _get_uma_predictor(model_name="uma-s-1p2", device="cuda"):
 # aliases for common potentials (lj, morse, emt, uma) or a generic
 # "module:Class[:kwargs]" format for anything else. Mirrors parseCalculatorSpec
 # on the C++ side.
-def _resolve_calculator(spec):
+def create_calculator(spec):
 
     # Lennard-Jones is the default when no spec is given. ASE's built-in pair
     # potential.
