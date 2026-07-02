@@ -133,6 +133,11 @@ const double MAX_ATOM_STEP = 0.01;
 // Haptic spring-damper constants (to reduce oscillations)
 const double K_HAPTIC_SPRING = 100.0;
 const double K_HAPTIC_DAMPER = 5.0;    // Damping for force mode
+const double HAPTIC_PROXY_STIFFNESS = 120.0;
+const double HAPTIC_PROXY_DAMPING = 6.0;
+const double HAPTIC_FORCE_SCALE = 0.15;
+const double MAX_PROXY_COUPLING_FORCE = 2.0;
+const double MAX_HAPTIC_FORCE = 1.8;
 const double K_RETURN_SPRING = 25.0;
 const double K_RETURN_DAMPER = 2.0;    // Damping for standby return
 const double K_POSITION_ATTRACTION = 25.0;
@@ -1232,6 +1237,7 @@ void readButtons(bool buttons[4], bool buttonReset[4]) {
     if (buttons[i]) {
       if (buttonReset[i]) {
         switch (i) {
+          
           case 1:
             switchCurrentAtom();
             break;
@@ -1278,31 +1284,41 @@ cVector3d getNewAtomPosition(Atom *atom, cVector3d &prev_position, const double 
 }
 
 cVector3d forceModeUpdate(Atom *current, cVector3d position, const double timeInterval) {
-  // spring constant haptic device feels
-  const double K_HAPTIC = K_HAPTIC_SPRING;
-  // spring constant atom feels
-  const double K_CURRENT = K_HAPTIC_SPRING;
-  // damping coefficients
-  const double K_HAPTIC_DAMP = K_HAPTIC_DAMPER;
-  const double K_CURRENT_DAMP = K_HAPTIC_DAMPER;
+  static bool prevForceModeHapticInitialized = false;
+  static cVector3d prevForceModeHapticPosition(0, 0, 0);
 
-  cVector3d positionErr = position - current->getLocalPos();
+  const double safeTimeInterval = (timeInterval > 1e-6) ? timeInterval : 1e-6;
+  const cVector3d atomPosition = current->getLocalPos();
+  const cVector3d atomPrevPosition = prevPositions[currentIndex];
+  const cVector3d atomVelocity = (atomPosition - atomPrevPosition) / safeTimeInterval;
 
-  // Calculate velocity for damping (using previous position)
-  cVector3d currentPrevPos = prevPositions[currentIndex];
-  cVector3d velocity = (current->getLocalPos() - currentPrevPos) / timeInterval;
+  cVector3d hapticVelocity(0, 0, 0);
+  if (prevForceModeHapticInitialized) {
+    hapticVelocity = (position - prevForceModeHapticPosition) / safeTimeInterval;
+  } else {
+    prevForceModeHapticInitialized = true;
+  }
+  prevForceModeHapticPosition = position;
 
-  // Spring force + damping force on atom
-  cVector3d hapticForce = positionErr * K_CURRENT - velocity * K_CURRENT_DAMP;
-  current->setForce(current->getForce() + hapticForce);
+  const cVector3d molecularForce = current->getForce();
+  const cVector3d positionError = position - atomPosition;
+  const cVector3d velocityError = hapticVelocity - atomVelocity;
+  const cVector3d rawCouplingForce =
+      positionError * HAPTIC_PROXY_STIFFNESS + velocityError * HAPTIC_PROXY_DAMPING;
+  const cVector3d couplingForce =
+      clampVectorMagnitude(rawCouplingForce, MAX_PROXY_COUPLING_FORCE);
 
-  current->setLocalPos(getNewAtomPosition(current, currentPrevPos, timeInterval));
-  prevPositions[currentIndex] = current->getLocalPos();
+  const cVector3d totalAtomForce = molecularForce + couplingForce;
+  current->setForce(totalAtomForce);
 
-  // Spring force + damping force returned to haptic device
-  cVector3d forceErr = current->getLocalPos() - position;
-  cVector3d hapticVelocity = (current->getLocalPos() - currentPrevPos) / timeInterval;
-  return forceErr * K_HAPTIC - hapticVelocity * K_HAPTIC_DAMP;
+  cVector3d newPosition = getNewAtomPosition(current, prevPositions[currentIndex], safeTimeInterval);
+  applyBoundaryConditions(newPosition);
+  prevPositions[currentIndex] = atomPosition;
+  current->setLocalPos(newPosition);
+  current->setVelocity((newPosition - atomPosition) / safeTimeInterval);
+
+  const cVector3d renderedForce = molecularForce * HAPTIC_FORCE_SCALE - couplingForce;
+  return clampVectorMagnitude(renderedForce, MAX_HAPTIC_FORCE);
 }
 
 bool prevHapticInitialized;
@@ -1319,9 +1335,14 @@ cVector3d prevForces[MAX_FORCE_HISTORY];
 int prevForcesIndex = 0;
 
 double getStrongestScalarProj(cVector3d v) {
+  const double length = v.length();
+  if (length <= 1e-9) {
+    return 0.0;
+  }
+
   double strongest = 0;
   for (int i = 0; i < MAX_FORCE_HISTORY; i++) {
-    double scalarProj = v.dot(prevForces[i]) / v.length();
+    double scalarProj = v.dot(prevForces[i]) / length;
     if (strongest < scalarProj) {
       strongest = scalarProj;
     }
@@ -1349,8 +1370,12 @@ std::optional<cVector3d> updateStandbyModeSimulating(Atom *current, cVector3d& p
     prevPositions[currentIndex] = temp;
 
     double distFromCenter = position.length() - finalErr;
-    position.normalize();
-    return getStrongestScalarProj(-position) * -position * (distFromCenter / HAPTIC_RADIUS) * K_HAPTIC;
+    if (position.length() <= 1e-9) {
+      return cVector3d(0, 0, 0);
+    }
+
+    cVector3d direction = cNormalize(position);
+    return getStrongestScalarProj(-direction) * -direction * (distFromCenter / HAPTIC_RADIUS) * K_HAPTIC;
   }
   simulating = false;
   return std::nullopt;
@@ -1496,7 +1521,7 @@ cVector3d stepSimulation(const cVector3d &requestedPosition, const double timeIn
         cVector3d x_curr = atom->getLocalPos();
         cVector3d new_position = getNewAtomPosition(atom, prevPositions[i], timeInterval);
         prevPositions[i] = x_curr;
-        applyBoundaryConditions(x_curr);
+        applyBoundaryConditions(new_position);
         atom->setLocalPos(new_position);
         cVector3d v = (new_position - prevPositions[i]) / timeInterval;
         atom->setVelocity(v);
@@ -1725,6 +1750,22 @@ void getSliderLayout(int sliderIndex, double &trackX, double &trackY) {
   trackY = SLIDER_TOP + sliderIndex * SLIDER_ROW_SPACING;
 }
 
+void getSliderMousePosition(GLFWwindow *a_window, double inputX, double inputY,
+                            double &mouseX, double &mouseY) {
+  int windowWidth;
+  int windowHeight;
+  glfwGetWindowSize(a_window, &windowWidth, &windowHeight);
+
+  if (windowWidth <= 0 || windowHeight <= 0) {
+    mouseX = inputX;
+    mouseY = inputY;
+    return;
+  }
+
+  mouseX = inputX * sliderWindowWidth / windowWidth;
+  mouseY = inputY * sliderWindowHeight / windowHeight;
+}
+
 double getSliderNormalizedValueFromMouseX(int sliderIndex, double mouseX) {
   double trackX;
   double trackY;
@@ -1806,8 +1847,11 @@ void renderSliderWindow() {
   }
 
   glfwMakeContextCurrent(sliderWindow);
+  int framebufferWidth;
+  int framebufferHeight;
   glfwGetWindowSize(sliderWindow, &sliderWindowWidth, &sliderWindowHeight);
-  glViewport(0, 0, sliderWindowWidth, sliderWindowHeight);
+  glfwGetFramebufferSize(sliderWindow, &framebufferWidth, &framebufferHeight);
+  glViewport(0, 0, framebufferWidth, framebufferHeight);
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   glOrtho(0, sliderWindowWidth, sliderWindowHeight, 0, -1, 1);
@@ -1876,7 +1920,10 @@ bool handleSliderMouseRelease() {
 
 void sliderWindowCursorPosCallback(GLFWwindow *a_window, double a_posX, double a_posY) {
   std::lock_guard<std::recursive_mutex> lock(sceneMutex);
-  handleSliderMouseMotion(a_posX, a_posY);
+  double mouseX;
+  double mouseY;
+  getSliderMousePosition(a_window, a_posX, a_posY, mouseX, mouseY);
+  handleSliderMouseMotion(mouseX, mouseY);
 }
 
 void sliderWindowMouseButtonCallback(GLFWwindow *a_window, int a_button, int a_action, int a_mods) {
@@ -1888,6 +1935,7 @@ void sliderWindowMouseButtonCallback(GLFWwindow *a_window, int a_button, int a_a
   double x;
   double y;
   glfwGetCursorPos(a_window, &x, &y);
+  getSliderMousePosition(a_window, x, y, x, y);
 
   if (a_action == GLFW_PRESS) {
     handleSliderMousePress(x, y);

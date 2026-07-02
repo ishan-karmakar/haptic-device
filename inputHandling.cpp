@@ -44,7 +44,8 @@ void unanchorAtoms() {
       spheres[i]->setAnchor(false);
     }
   }
-  assert(just_unanchored = 5);
+  just_unanchored = 5;
+  assert(just_unanchored == 5);
   just_unanchored = 0;
 }
 
