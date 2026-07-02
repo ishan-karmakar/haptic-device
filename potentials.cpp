@@ -44,9 +44,9 @@ namespace
 
             config.isolated = 0;
             config.use_environment = 1;
-
+            
             config.program_name = Py_DecodeLocale(
-                "./haptic-device/uma_env/bin/python",
+                "../../haptic-device/uma_env/bin/python",
                 NULL);
 
             config.module_search_paths_set = 0;
@@ -628,6 +628,8 @@ namespace
     std::vector<std::string> getAseFileIoCandidates() {
         std::vector<std::string> candidates;
         candidates.push_back("./haptic-device/ase_file_io.py");
+        candidates.push_back("../haptic-device/ase_file_io.py");
+        candidates.push_back("../../haptic-device/ase_file_io.py");
         return candidates;
     }
 
