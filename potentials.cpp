@@ -65,7 +65,7 @@ namespace
 
             // Point to the venv Python so sys.path picks up the right site-packages.
             config.program_name = Py_DecodeLocale(
-                "./haptic-device/uma_env/bin/python",
+                "../../haptic-device/uma_env/bin/python",
                 NULL);
 
             config.module_search_paths_set = 0;
@@ -338,7 +338,7 @@ namespace
         PyGILState_STATE gilState = PyGILState_Ensure();
 
         // CHANGE TO RELATIVE
-        std::string scriptDir = "/mnt/c/Users/sc73369/Documents/GitHub/chai3d/haptic-device/";
+        std::string scriptDir = "./haptic-device/";
 
         // Append our script directory to sys.path so custom modules (e.g. uma_wrapper) are found.
         PyObject *sysPath = PySys_GetObject("path");
@@ -695,6 +695,8 @@ namespace
     std::vector<std::string> getAseFileIoCandidates() {
         std::vector<std::string> candidates;
         candidates.push_back("./haptic-device/ase_file_io.py");
+        candidates.push_back("../haptic-device/ase_file_io.py");
+        candidates.push_back("../../haptic-device/ase_file_io.py");
         return candidates;
     }
 
