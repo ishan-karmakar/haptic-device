@@ -230,7 +230,7 @@ void keyCallback(GLFWwindow *a_window, int a_key, int a_scancode, int a_action,
     // anchor all atoms while maintaining control
     anchorAllAtoms();
   } else if (a_key == GLFW_KEY_UP || a_key == GLFW_KEY_DOWN) {
-    moveCameraVertical(a_key == GLFW_KEY_UP);
+    moveCameraVertical(a_key == GLFW_KEY_DOWN);
   } else if (a_key == GLFW_KEY_RIGHT || a_key == GLFW_KEY_LEFT) {
     moveCameraHorizontal(a_key == GLFW_KEY_RIGHT);
   } else if (a_key == GLFW_KEY_LEFT_BRACKET || a_key == GLFW_KEY_RIGHT_BRACKET) {
