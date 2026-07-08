@@ -14,44 +14,42 @@ import numpy as np
 import struct
 import time
 
-USERNAME = "ik4335"
+USERNAME = "wc5879"
 REMOTE_PYTHON = f"/home/{USERNAME}/uma_env/bin/python3"
+NUM_SHARDS = 2
 
 class Atoms:
     def __init__(self, **kwargs):
         self.num_atoms = len(kwargs["numbers"])
         self.ssh = paramiko.SSHClient()
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.ssh.connect(hostname="fri.cm.utexas.edu", username=USERNAME)
+        self.ssh.connect(hostname="saskatchewan.cm.utexas.edu", username=USERNAME)
         sftp = self.ssh.open_sftp()
         sftp.put("haptic-device/server.py", f"/home/{USERNAME}/.cache/server.py")
         sftp.close()
-        self.stdin, self.stdout, self.stderr = self.ssh.exec_command(f"{REMOTE_PYTHON} -u /home/{USERNAME}/.cache/server.py", get_pty=False)
+        self.stdin, self.stdout, self.stderr = self.ssh.exec_command(f"bash -l -c 'srun --gres=shard:{NUM_SHARDS} {REMOTE_PYTHON} -u /home/{USERNAME}/.cache/server.py'", get_pty=False)
         print("Waiting for server to be ready...")
         while True:
             line = self.stdout.readline()
             if "Ready to accept instructions" in line:
                 print("Server is ready")
                 break
-
         data = pickle.dumps(kwargs)
         self.stdin.write(struct.pack("!I", len(data)))
         self.stdin.write(data)
         self.stdin.flush()
 
     def set_positions(self, positions):
-        self.stdin.write(np.array(positions).tobytes())
-        self.stdin.flush()
+        self.stdin.write(np.array(positions, dtype=np.float32).tobytes())
 
     def get_forces(self):
-        # start = time.perf_counter()
-        data = self.stdout.read(np.dtype(np.float32).itemsize * self.num_atoms * 3)
-        # print("Latency on server side", self.stderr.readline(), end="")
-        # print(f"Latency on client side: {(time.perf_counter() - start) * 1000}")
+        size = np.dtype(np.float32).itemsize * self.num_atoms * 3
+        data = self.stdout.read(size)
         return np.frombuffer(data, dtype=np.float32).reshape((self.num_atoms, 3))
 
     def get_potential_energy(self):
-        return struct.unpack("d", self.stdout.read(8))[0]
+        data = self.stdout.read(8 + 1)[:8]
+        return struct.unpack("d", data)[0]
 
 # Module-level cache of UMA predictors. Building a predictor loads a large model
 # into memory, so we keep one per (model, device) alive for the whole session
@@ -110,7 +108,7 @@ def create_calculator(spec):
 
     # UMA is Meta's universal ML potential. The optional ":task" suffix selects
     # the prediction head (omol, omat, oc20, ...); omol is the default.
-    elif spec.startswith("uma"):
+    elif spec == "uma":
         from fairchem.core import FAIRChemCalculator
 
         # Examples:
