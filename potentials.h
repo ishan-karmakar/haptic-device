@@ -15,7 +15,8 @@ struct AseStructureData {
     std::vector<double> radii;
   };
 
-AseStructureData loadAseStructure(const std::string& filename);
+AseStructureData loadAseStructure(const std::string& filename,
+                                  const std::array<int, 3>& repeat = {1, 1, 1});
 
 ////// Base class for all calculators
 class Calculator {

@@ -863,13 +863,17 @@ namespace
 //
 // The script prints: atom count, positions (Nx3), atomic numbers (N),
 // cell matrix (3x3 flattened), and PBC flags (3 booleans).
-AseStructureData loadAseStructure(const std::string &filename)
+AseStructureData loadAseStructure(const std::string &filename,
+                                  const std::array<int, 3> &repeat)
 {
     AseStructureData structure;
     const std::string scriptPath = resolveAseFileIoScript();
     const std::string pythonExecutable = resolveAsePythonExecutable();
     const std::string command =
-        quoteForShell(pythonExecutable) + " " + quoteForShell(scriptPath) + " " + quoteForShell(filename);
+        quoteForShell(pythonExecutable) + " " + quoteForShell(scriptPath) + " " + quoteForShell(filename)
+        + " " + std::to_string(repeat[0])
+        + " " + std::to_string(repeat[1])
+        + " " + std::to_string(repeat[2]);
     std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.c_str(), "r"), pclose);
     if (!pipe) {
         throw std::runtime_error("Failed to start ASE structure loader helper.");
